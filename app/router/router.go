@@ -67,8 +67,11 @@ func health(w http.ResponseWriter, req *http.Request) {
 func actionHandler(w http.ResponseWriter, req *http.Request) {
 	log.WithFields(
 		log.Fields{
-			"action": req.FormValue("Action"),
-			"url":    req.URL,
+			"action":  req.FormValue("Action"),
+			"url":     req.URL.String(),
+			"method":  req.Method,
+			"host":    req.Host,
+			"headers": req.Header,
 		}).Debug("Handling URL request")
 	fn, ok := routingTable[req.FormValue("Action")]
 	if !ok {
