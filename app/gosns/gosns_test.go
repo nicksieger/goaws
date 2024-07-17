@@ -257,6 +257,92 @@ func TestPublishHandler_POST_FilterPolicyPassesTheMessage(t *testing.T) {
 	}
 }
 
+func TestPublishHandler_POST_FilterPolicyMultiplesPassesTheMessage(t *testing.T) {
+	// We set up queue so later we can check if anything was posted there
+	queueName := "testingQueue"
+	queueUrl := "http://" + app.CurrentEnvironment.Host + ":" + app.CurrentEnvironment.Port + "/queue/" + queueName
+	queueArn := "arn:aws:sqs:" + app.CurrentEnvironment.Region + ":000000000000:" + queueName
+	app.SyncQueues.Queues[queueName] = &app.Queue{
+		Name:        queueName,
+		TimeoutSecs: 30,
+		Arn:         queueArn,
+		URL:         queueUrl,
+		IsFIFO:      app.HasFIFOQueueName(queueName),
+	}
+
+	// We set up a topic with the corresponding Subscription including FilterPolicy
+	topicName := "testingTopic"
+	topicArn := "arn:aws:sns:" + app.CurrentEnvironment.Region + ":000000000000:" + topicName
+	subArn, _ := common.NewUUID()
+	subArn = topicArn + ":" + subArn
+	app.SyncTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
+		{
+			EndPoint:        app.SyncQueues.Queues[queueName].Arn,
+			Protocol:        "sqs",
+			SubscriptionArn: subArn,
+			FilterPolicy: &app.FilterPolicy{
+				"foo": {"bar", "baz", "quux"}, // set up FilterPolicy for attribute `foo` to be equal to one of `bar`, `baz`, or `quux`
+			},
+		},
+	}}
+
+	tt := []struct {
+		value    string
+		expected int
+	}{
+		{"baz", 1},
+		{"fred", 0},
+	}
+
+	for _, test := range tt {
+		t.Run(test.value, func(t *testing.T) {
+			app.SyncQueues.Queues[queueName].Messages = nil
+
+			// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
+			// pass 'nil' as the third parameter.
+			req, err := http.NewRequest("POST", "/", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			form := url.Values{}
+			form.Add("TopicArn", topicArn)
+			form.Add("Message", "TestMessage1")
+			form.Add("MessageAttributes.entry.1.Name", "foo")                   // special format of parameter for MessageAttribute
+			form.Add("MessageAttributes.entry.1.Value.DataType", "String")      // Datatype must be specified for proper parsing by aws
+			form.Add("MessageAttributes.entry.1.Value.StringValue", test.value) // we actually sent attribute `foo`
+			req.PostForm = form
+
+			// We create a ResponseRecorder (which satisfies http.ResponseWriter) to record the response.
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(Publish)
+
+			// Our handlers satisfy http.Handler, so we can call their ServeHTTP method
+			// directly and pass in our Request and ResponseRecorder.
+			handler.ServeHTTP(rr, req)
+
+			// Check the status code is what we expect.
+			if status := rr.Code; status != http.StatusOK {
+				t.Errorf("handler returned wrong status code: got %v want %v",
+					status, http.StatusOK)
+			}
+
+			// Check the response body is what we expect.
+			expected := "<MessageId>"
+			if !strings.Contains(rr.Body.String(), expected) {
+				t.Errorf("handler returned unexpected body: got %v want %v",
+					rr.Body.String(), expected)
+			}
+
+			// check of the queue is empty
+			if len(app.SyncQueues.Queues[queueName].Messages) != test.expected {
+				t.Errorf("queue contains unexpected messages: got %v want %v",
+					len(app.SyncQueues.Queues[queueName].Messages), test.expected)
+			}
+		})
+	}
+}
+
 func TestSubscribehandler_POST_Success(t *testing.T) {
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.

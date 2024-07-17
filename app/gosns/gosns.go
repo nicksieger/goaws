@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +25,10 @@ import (
 
 	"github.com/Admiral-Piett/goaws/app"
 	"github.com/Admiral-Piett/goaws/app/common"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -49,6 +54,7 @@ func init() {
 	app.SnsErrors["TopicExists"] = err3
 	err4 := app.SnsErrorType{HttpError: http.StatusBadRequest, Type: "InvalidParameter", Code: "AWS.SimpleNotificationService.ValidationError", Message: "The input fails to satisfy the constraints specified by an AWS service."}
 	app.SnsErrors["ValidationError"] = err4
+	app.SnsErrors["InternalFailure"] = app.SnsErrorType{HttpError: http.StatusInternalServerError, Type: "InternalFailure", Code: "AWS.SimpleNotificationService.InternalFailure", Message: "The request processing has failed because of an unknown error, exception or failure."}
 	PrivateKEY, PemKEY, _ = createPemFile()
 }
 
@@ -137,6 +143,12 @@ func Subscribe(w http.ResponseWriter, req *http.Request) {
 	endpoint := req.FormValue("Endpoint")
 	filterPolicy := &app.FilterPolicy{}
 	raw := false
+
+	_, err := url.Parse(endpoint)
+	if err != nil {
+		createErrorResponse(w, req, "ValidationError")
+		return
+	}
 
 	for attrIndex := 1; req.FormValue("Attributes.entry."+strconv.Itoa(attrIndex)+".key") != ""; attrIndex++ {
 		value := req.FormValue("Attributes.entry." + strconv.Itoa(attrIndex) + ".value")
@@ -507,7 +519,10 @@ func Publish(w http.ResponseWriter, req *http.Request) {
 		for _, subs := range app.SyncTopics.Topics[topicName].Subscriptions {
 			switch app.Protocol(subs.Protocol) {
 			case app.ProtocolSQS:
-				publishSQS(w, req, subs, messageBody, messageAttributes, subject, topicArn, topicName, messageStructure)
+				if err := publishSQS(w, req, subs, messageBody, messageAttributes, subject, topicArn, topicName, messageStructure); err != nil {
+					createErrorResponse(w, req, err.Error())
+					return
+				}
 			case app.ProtocolHTTP:
 				fallthrough
 			case app.ProtocolHTTPS:
@@ -528,41 +543,65 @@ func Publish(w http.ResponseWriter, req *http.Request) {
 
 func publishSQS(w http.ResponseWriter, req *http.Request,
 	subs *app.Subscription, messageBody string, messageAttributes map[string]app.MessageAttributeValue,
-	subject string, topicArn string, topicName string, messageStructure string) {
+	subject string, topicArn string, topicName string, messageStructure string) error {
 	if subs.FilterPolicy != nil && !subs.FilterPolicy.IsSatisfiedBy(messageAttributes) {
-		return
+		log.Debugf("message %q filtered out", subject)
+		return nil
 	}
 
-	endPoint := subs.EndPoint
-	uriSegments := strings.Split(endPoint, "/")
+	endPoint, err := url.Parse(subs.EndPoint)
+	if err != nil {
+		log.Errorf("error parsing endpoint: %v", err)
+		return errors.New("ValidationError")
+	}
+
+	ourHost := url.URL{
+		Scheme: req.URL.Scheme,
+		Host:   req.Host,
+	}
+
+	msg, err := newMessage(subs, messageBody, subject, messageStructure, messageAttributes)
+	if err != nil {
+		log.Errorf("error creating message: %v", err)
+		return errors.New("InternalFailure")
+	}
+
+	log.Infof("publishSQS %s (host %s)", endPoint.String(), ourHost.String())
+	if !strings.HasPrefix(endPoint.String(), ourHost.String()) {
+		// external sqs service
+		sess, err := session.NewSession(aws.NewConfig().
+			WithRegion(app.CurrentEnvironment.Region).
+			WithEndpoint(endPoint.String()).
+			WithCredentials(credentials.NewStaticCredentials(
+				app.CurrentEnvironment.Credentials.AccessKeyId,
+				app.CurrentEnvironment.Credentials.SecretAccessKey,
+				"",
+			)))
+		if err != nil {
+			log.Errorf("creating sqs session: %v", err)
+			return errors.New("InternalFailure")
+		}
+		svc := sqs.New(sess)
+		body := string(msg.MessageBody)
+		output, err := svc.SendMessage(&sqs.SendMessageInput{
+			QueueUrl:          &subs.EndPoint,
+			MessageAttributes: convertMessageAttributes(msg.MessageAttributes),
+			MessageBody:       &body,
+		})
+		if err != nil {
+			log.Errorf("delivering sqs message: %v", err)
+		} else {
+			log.Infof("delivered sqs message, MessageId: %s", *output.MessageId)
+		}
+		return nil
+	}
+
+	uriSegments := strings.Split(endPoint.Path, "/")
 	queueName := uriSegments[len(uriSegments)-1]
 	arnSegments := strings.Split(queueName, ":")
 	queueName = arnSegments[len(arnSegments)-1]
 
 	if _, ok := app.SyncQueues.Queues[queueName]; ok {
-		msg := app.Message{}
-
-		if subs.Raw == false {
-			m, err := CreateMessageBody(subs, messageBody, subject, messageStructure, messageAttributes)
-			if err != nil {
-				createErrorResponse(w, req, err.Error())
-				return
-			}
-
-			msg.MessageBody = m
-		} else {
-			msg.MessageAttributes = messageAttributes
-			msg.MD5OfMessageAttributes = common.HashAttributes(messageAttributes)
-			m, err := extractMessageFromJSON(messageBody, subs.Protocol)
-			if err == nil {
-				msg.MessageBody = []byte(m)
-			} else {
-				msg.MessageBody = []byte(messageBody)
-			}
-		}
-
-		msg.MD5OfMessageBody = common.GetMD5Hash(messageBody)
-		msg.Uuid, _ = common.NewUUID()
 		app.SyncQueues.Lock()
 		app.SyncQueues.Queues[queueName].Messages = append(app.SyncQueues.Queues[queueName].Messages, msg)
 		app.SyncQueues.Unlock()
@@ -571,6 +610,40 @@ func publishSQS(w http.ResponseWriter, req *http.Request,
 	} else {
 		log.Infof("%s: Queue %s does not exist, message discarded\n", time.Now().Format("2006-01-02 15:04:05"), queueName)
 	}
+
+	return nil
+}
+
+func convertMessageAttributes(values map[string]app.MessageAttributeValue) map[string]*sqs.MessageAttributeValue {
+	result := make(map[string]*sqs.MessageAttributeValue)
+	for k, v := range values {
+		result[k] = &sqs.MessageAttributeValue{
+			DataType:    &v.DataType,
+			StringValue: &v.Value,
+		}
+	}
+	return result
+}
+
+func newMessage(subs *app.Subscription, messageBody string, subject string, messageStructure string, messageAttributes map[string]app.MessageAttributeValue) (app.Message, error) {
+	msg := app.Message{}
+
+	if subs.Raw == false {
+		m, err := CreateMessageBody(subs, messageBody, subject, messageStructure, messageAttributes)
+		if err != nil {
+			return msg, err
+		}
+
+		msg.MessageBody = m
+	} else {
+		msg.MessageAttributes = messageAttributes
+		msg.MD5OfMessageAttributes = common.HashAttributes(messageAttributes)
+		msg.MessageBody = []byte(extractMessageFromJSON(messageBody, subs.Protocol))
+	}
+
+	msg.MD5OfMessageBody = common.GetMD5Hash(messageBody)
+	msg.Uuid, _ = common.NewUUID()
+	return msg, nil
 }
 
 func publishHTTP(subs *app.Subscription, messageBody string, messageAttributes map[string]app.MessageAttributeValue,
@@ -729,11 +802,7 @@ func CreateMessageBody(subs *app.Subscription, msg string, subject string, messa
 	}
 
 	if app.MessageStructure(messageStructure) == app.MessageStructureJSON {
-		m, err := extractMessageFromJSON(msg, subs.Protocol)
-		if err != nil {
-			return nil, err
-		}
-		message.Message = m
+		message.Message = extractMessageFromJSON(msg, subs.Protocol)
 	} else {
 		message.Message = msg
 	}
@@ -749,22 +818,22 @@ func CreateMessageBody(subs *app.Subscription, msg string, subject string, messa
 	return byteMsg, nil
 }
 
-func extractMessageFromJSON(msg string, protocol string) (string, error) {
+func extractMessageFromJSON(msg string, protocol string) string {
 	var msgWithProtocols map[string]string
 	if err := json.Unmarshal([]byte(msg), &msgWithProtocols); err != nil {
-		return "", err
+		return msg
 	}
 
 	defaultMsg, ok := msgWithProtocols[string(app.ProtocolDefault)]
 	if !ok {
-		return "", errors.New(app.ErrNoDefaultElementInJSON)
+		defaultMsg = msg
 	}
 
 	if m, ok := msgWithProtocols[protocol]; ok {
-		return m, nil
+		return m
 	}
 
-	return defaultMsg, nil
+	return defaultMsg
 }
 
 func createErrorResponse(w http.ResponseWriter, req *http.Request, err string) {

@@ -29,6 +29,10 @@ type EnvQueueAttributes struct {
 	MaximumMessageSize            int
 }
 
+type Credentials struct {
+	AccessKeyId, SecretAccessKey string
+}
+
 type Environment struct {
 	Host                   string
 	Port                   string
@@ -36,6 +40,7 @@ type Environment struct {
 	SnsPort                string
 	Region                 string
 	AccountID              string
+	Credentials            Credentials
 	LogToFile              bool
 	LogFile                string
 	EnableDuplicates       bool
