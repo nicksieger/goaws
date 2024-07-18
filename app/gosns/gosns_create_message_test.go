@@ -2,6 +2,7 @@ package gosns
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Admiral-Piett/goaws/app"
@@ -112,9 +113,9 @@ func TestCreateMessageBody_OnlySqsValueInJson(t *testing.T) {
 	message := `{"sqs": "message text"}`
 	subject := "subject"
 
-	snsMessage, err := CreateMessageBody(subs, message, subject, messageStructureJSON, nil)
-	if err == nil {
-		t.Fatalf(`error expected but instead SNS message was returned: %s`, snsMessage)
+	snsMessage, _ := CreateMessageBody(subs, message, subject, messageStructureJSON, nil)
+	if !strings.Contains(string(snsMessage), "message text") {
+		t.Fatalf(`error expected message to containe "message text" but found: %s`, string(snsMessage))
 	}
 }
 

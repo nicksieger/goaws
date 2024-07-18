@@ -185,17 +185,19 @@ func TestPublishHandler_POST_FilterPolicyRejectsTheMessage(t *testing.T) {
 	}
 }
 
+var testHost = "http://localhost:4002/"
+
 func TestPublishHandler_POST_FilterPolicyPassesTheMessage(t *testing.T) {
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
-	req, err := http.NewRequest("POST", "/", nil)
+	req, err := http.NewRequest("POST", testHost, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// We set up queue so later we can check if anything was posted there
 	queueName := "testingQueue"
-	queueUrl := "http://" + app.CurrentEnvironment.Host + ":" + app.CurrentEnvironment.Port + "/queue/" + queueName
+	queueUrl := testHost + "queue/" + queueName
 	queueArn := "arn:aws:sqs:" + app.CurrentEnvironment.Region + ":000000000000:" + queueName
 	app.SyncQueues.Queues[queueName] = &app.Queue{
 		Name:        queueName,

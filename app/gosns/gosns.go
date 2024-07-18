@@ -567,7 +567,7 @@ func publishSQS(w http.ResponseWriter, req *http.Request,
 	}
 
 	log.Infof("publishSQS %s (host %s)", endPoint.String(), ourHost.String())
-	if !strings.HasPrefix(endPoint.String(), ourHost.String()) {
+	if (endPoint.Scheme == "http" || endPoint.Scheme == "https") && !strings.HasPrefix(endPoint.String(), ourHost.String()) {
 		// external sqs service
 		sess, err := session.NewSession(aws.NewConfig().
 			WithRegion(app.CurrentEnvironment.Region).
@@ -596,7 +596,7 @@ func publishSQS(w http.ResponseWriter, req *http.Request,
 		return nil
 	}
 
-	uriSegments := strings.Split(endPoint.Path, "/")
+	uriSegments := strings.Split(endPoint.String(), "/")
 	queueName := uriSegments[len(uriSegments)-1]
 	arnSegments := strings.Split(queueName, ":")
 	queueName = arnSegments[len(arnSegments)-1]
@@ -628,7 +628,7 @@ func convertMessageAttributes(values map[string]app.MessageAttributeValue) map[s
 func newMessage(subs *app.Subscription, messageBody string, subject string, messageStructure string, messageAttributes map[string]app.MessageAttributeValue) (app.Message, error) {
 	msg := app.Message{}
 
-	if subs.Raw == false {
+	if !subs.Raw {
 		m, err := CreateMessageBody(subs, messageBody, subject, messageStructure, messageAttributes)
 		if err != nil {
 			return msg, err
