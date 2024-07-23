@@ -519,7 +519,7 @@ func Publish(w http.ResponseWriter, req *http.Request) {
 		for _, subs := range app.SyncTopics.Topics[topicName].Subscriptions {
 			switch app.Protocol(subs.Protocol) {
 			case app.ProtocolSQS:
-				if err := publishSQS(w, req, subs, messageBody, messageAttributes, subject, topicArn, topicName, messageStructure); err != nil {
+				if err := publishSQS(req, subs, messageBody, messageAttributes, subject, topicName, messageStructure); err != nil {
 					createErrorResponse(w, req, err.Error())
 					return
 				}
@@ -541,11 +541,11 @@ func Publish(w http.ResponseWriter, req *http.Request) {
 	SendResponseBack(w, req, respStruct, content)
 }
 
-func publishSQS(w http.ResponseWriter, req *http.Request,
+func publishSQS(req *http.Request,
 	subs *app.Subscription, messageBody string, messageAttributes map[string]app.MessageAttributeValue,
-	subject string, topicArn string, topicName string, messageStructure string) error {
+	subject string, topicName string, messageStructure string) error {
 	if subs.FilterPolicy != nil && !subs.FilterPolicy.IsSatisfiedBy(messageAttributes) {
-		log.Debugf("message %q filtered out", subject)
+		log.Debugf("message to %q with attributes %v filtered out by filter policy %v", subs.EndPoint, messageAttributes, subs.FilterPolicy)
 		return nil
 	}
 
