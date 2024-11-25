@@ -141,7 +141,7 @@ func Subscribe(w http.ResponseWriter, req *http.Request) {
 	topicArn := req.FormValue("TopicArn")
 	protocol := req.FormValue("Protocol")
 	endpoint := req.FormValue("Endpoint")
-	filterPolicy := &app.FilterPolicy{}
+	filterPolicy := app.FilterPolicy{}
 	raw := false
 
 	_, err := url.Parse(endpoint)
@@ -154,7 +154,7 @@ func Subscribe(w http.ResponseWriter, req *http.Request) {
 		value := req.FormValue("Attributes.entry." + strconv.Itoa(attrIndex) + ".value")
 		switch key := req.FormValue("Attributes.entry." + strconv.Itoa(attrIndex) + ".key"); key {
 		case "FilterPolicy":
-			json.Unmarshal([]byte(value), filterPolicy)
+			json.Unmarshal([]byte(value), &filterPolicy)
 		case "RawMessageDelivery":
 			raw = (value == "true")
 		}
@@ -376,8 +376,8 @@ func SetSubscriptionAttributes(w http.ResponseWriter, req *http.Request) {
 				}
 
 				if Attribute == "FilterPolicy" {
-					filterPolicy := &app.FilterPolicy{}
-					err := json.Unmarshal([]byte(Value), filterPolicy)
+					filterPolicy := app.FilterPolicy{}
+					err := json.Unmarshal([]byte(Value), &filterPolicy)
 					if err != nil {
 						createErrorResponse(w, req, "ValidationError")
 						return

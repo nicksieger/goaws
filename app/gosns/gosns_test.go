@@ -144,7 +144,7 @@ func TestPublishHandler_POST_FilterPolicyRejectsTheMessage(t *testing.T) {
 			EndPoint:        app.SyncQueues.Queues[queueName].Arn,
 			Protocol:        "sqs",
 			SubscriptionArn: subArn,
-			FilterPolicy: &app.FilterPolicy{
+			FilterPolicy: app.FilterPolicy{
 				"foo": {"bar"}, // set up FilterPolicy for attribute `foo` to be equal `bar`
 			},
 		},
@@ -217,7 +217,7 @@ func TestPublishHandler_POST_FilterPolicyPassesTheMessage(t *testing.T) {
 			EndPoint:        app.SyncQueues.Queues[queueName].Arn,
 			Protocol:        "sqs",
 			SubscriptionArn: subArn,
-			FilterPolicy: &app.FilterPolicy{
+			FilterPolicy: app.FilterPolicy{
 				"foo": {"bar"}, // set up FilterPolicy for attribute `foo` to be equal `bar`
 			},
 		},
@@ -282,7 +282,7 @@ func TestPublishHandler_POST_FilterPolicyMultiplesPassesTheMessage(t *testing.T)
 			EndPoint:        app.SyncQueues.Queues[queueName].Arn,
 			Protocol:        "sqs",
 			SubscriptionArn: subArn,
-			FilterPolicy: &app.FilterPolicy{
+			FilterPolicy: app.FilterPolicy{
 				"foo": {"bar", "baz", "quux"}, // set up FilterPolicy for attribute `foo` to be equal to one of `bar`, `baz`, or `quux`
 			},
 		},
@@ -605,7 +605,7 @@ func TestGetSubscriptionAttributesHandler_POST_Success(t *testing.T) {
 	app.SyncTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
 		{
 			SubscriptionArn: subArn,
-			FilterPolicy: &app.FilterPolicy{
+			FilterPolicy: app.FilterPolicy{
 				"foo": {"bar"},
 			},
 		},
@@ -700,7 +700,7 @@ func TestSetSubscriptionAttributesHandler_FilterPolicy_POST_Success(t *testing.T
 	}
 
 	actualFilterPolicy := app.SyncTopics.Topics[topicName].Subscriptions[0].FilterPolicy
-	if (*actualFilterPolicy)["foo"][0] != "bar" {
+	if actualFilterPolicy["foo"][0] != "bar" {
 		t.Errorf("filter policy has not need applied")
 	}
 }

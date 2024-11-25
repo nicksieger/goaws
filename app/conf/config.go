@@ -143,7 +143,7 @@ func LoadYamlConfig(filename string, env string) []string {
 		topicArn := "arn:aws:sns:" + app.CurrentEnvironment.Region + ":" + app.CurrentEnvironment.AccountID + ":" + topic.Name
 
 		newTopic := &app.Topic{Name: topic.Name, Arn: topicArn}
-		newTopic.Subscriptions = make([]*app.Subscription, 0, 0)
+		newTopic.Subscriptions = make([]*app.Subscription, 0)
 
 		for _, subs := range topic.Subscriptions {
 			var newSub *app.Subscription
@@ -154,8 +154,8 @@ func LoadYamlConfig(filename string, env string) []string {
 				newSub = createSqsSubscription(subs, topicArn)
 			}
 			if subs.FilterPolicy != "" {
-				filterPolicy := &app.FilterPolicy{}
-				err = json.Unmarshal([]byte(subs.FilterPolicy), filterPolicy)
+				filterPolicy := app.FilterPolicy{}
+				err = json.Unmarshal([]byte(subs.FilterPolicy), &filterPolicy)
 				if err != nil {
 					log.Errorf("err: %s", err)
 					return ports

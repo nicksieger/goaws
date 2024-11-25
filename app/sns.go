@@ -19,18 +19,18 @@ type MsgAttr struct {
 }
 type SNSMessage struct {
 	Type              string
-	Token             string `json:"Token",omitempty`
+	Token             string `json:"Token,omitempty"`
 	MessageId         string
 	TopicArn          string
 	Subject           string
 	Message           string
 	Timestamp         string
 	SignatureVersion  string
-	Signature         string `json:"Signature",omitempty`
+	Signature         string `json:"Signature,omitempty"`
 	SigningCertURL    string
 	UnsubscribeURL    string
-	SubscribeURL      string             `json:"SubscribeURL",omitempty`
-	MessageAttributes map[string]MsgAttr `json:"MessageAttributes",omitempty`
+	SubscribeURL      string             `json:"SubscribeURL,omitempty"`
+	MessageAttributes map[string]MsgAttr `json:"MessageAttributes,omitempty"`
 }
 
 type Subscription struct {
@@ -39,15 +39,15 @@ type Subscription struct {
 	SubscriptionArn string
 	EndPoint        string
 	Raw             bool
-	FilterPolicy    *FilterPolicy
+	FilterPolicy    FilterPolicy `json:"FilterPolicy,omitempty"`
 }
 
 // only simple "ExactMatch" string policy is supported at the moment
 type FilterPolicy map[string][]string
 
 // Function checks if MessageAttributes passed to Topic satisfy FilterPolicy set by subscription
-func (fp *FilterPolicy) IsSatisfiedBy(msgAttrs map[string]MessageAttributeValue) bool {
-	for policyAttrName, policyAttrValues := range *fp {
+func (fp FilterPolicy) IsSatisfiedBy(msgAttrs map[string]MessageAttributeValue) bool {
+	for policyAttrName, policyAttrValues := range fp {
 		attrValue, ok := msgAttrs[policyAttrName]
 		if !ok {
 			return false // the attribute has to be present in the message
