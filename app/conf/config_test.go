@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,7 +29,7 @@ func TestConfig_NoQueuesOrTopics(t *testing.T) {
 	if numTopics != 0 {
 		t.Errorf("Expected zero topics to be in the environment but got %d\n", numTopics)
 	}
-	numTopics = len(app.SyncTopics.Topics)
+	numTopics = app.AllTopics.Count()
 	if numTopics != 0 {
 		t.Errorf("Expected zero topics to be in the sns topics but got %d\n", numTopics)
 	}
@@ -54,7 +55,7 @@ func TestConfig_CreateQueuesTopicsAndSubscriptions(t *testing.T) {
 	if numTopics != 2 {
 		t.Errorf("Expected two topics to be in the environment but got %d\n", numTopics)
 	}
-	numTopics = len(app.SyncTopics.Topics)
+	numTopics = app.AllTopics.Count()
 	if numTopics != 2 {
 		t.Errorf("Expected two topics to be in the sns topics but got %d\n", numTopics)
 	}
@@ -147,13 +148,12 @@ func TestConfig_LoadYamlConfig_finds_default_config(t *testing.T) {
 	LoadYamlConfig("", env)
 
 	queues := app.SyncQueues.Queues
-	topics := app.SyncTopics.Topics
+	topics := app.AllTopics.List()
 	for _, expectedName := range expectedQueues {
 		_, ok := queues[expectedName]
 		assert.True(t, ok)
 	}
 	for _, expectedName := range expectedTopics {
-		_, ok := topics[expectedName]
-		assert.True(t, ok)
+		assert.True(t, slices.ContainsFunc(topics, func(t *app.Topic) bool { return t.Name == expectedName }))
 	}
 }

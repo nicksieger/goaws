@@ -42,7 +42,6 @@ var PrivateKEY *rsa.PrivateKey
 var TOPIC_DATA map[string]*pendingConfirm
 
 func init() {
-	app.SyncTopics.Topics = make(map[string]*app.Topic)
 	TOPIC_DATA = make(map[string]*pendingConfirm)
 
 	app.SnsErrors = make(map[string]app.SnsErrorType)
@@ -104,9 +103,9 @@ func ListTopics(w http.ResponseWriter, req *http.Request) {
 	uuid, _ := common.NewUUID()
 	respStruct.Metadata = app.ResponseMetadata{RequestId: uuid}
 
-	respStruct.Result.Topics.Member = make([]app.TopicArnResult, 0, 0)
+	respStruct.Result.Topics.Member = make([]app.TopicArnResult, 0)
 	log.Println("Listing Topics")
-	for _, topic := range app.SyncTopics.Topics {
+	for _, topic := range app.AllTopics.List() {
 		ta := app.TopicArnResult{TopicArn: topic.Arn}
 		respStruct.Result.Topics.Member = append(respStruct.Result.Topics.Member, ta)
 	}
@@ -118,17 +117,15 @@ func CreateTopic(w http.ResponseWriter, req *http.Request) {
 	content := req.FormValue("ContentType")
 	topicName := req.FormValue("Name")
 	topicArn := ""
-	if _, ok := app.SyncTopics.Topics[topicName]; ok {
-		topicArn = app.SyncTopics.Topics[topicName].Arn
+	if t, ok := app.AllTopics.Get(topicName); ok {
+		topicArn = t.Arn
 	} else {
 		topicArn = "arn:aws:sns:" + app.CurrentEnvironment.Region + ":" + app.CurrentEnvironment.AccountID + ":" + topicName
 
 		log.Println("Creating Topic:", topicName)
 		topic := &app.Topic{Name: topicName, Arn: topicArn}
-		topic.Subscriptions = make([]*app.Subscription, 0, 0)
-		app.SyncTopics.Lock()
-		app.SyncTopics.Topics[topicName] = topic
-		app.SyncTopics.Unlock()
+		topic.Subscriptions = make([]*app.Subscription, 0)
+		app.AllTopics.Add(topic)
 	}
 	uuid, _ := common.NewUUID()
 	respStruct := app.CreateTopicResponse{"http://queue.amazonaws.com/doc/2012-11-05/", app.CreateTopicResult{TopicArn: topicArn}, app.ResponseMetadata{RequestId: uuid}}
@@ -177,25 +174,23 @@ func Subscribe(w http.ResponseWriter, req *http.Request) {
 	subArn = topicArn + ":" + subArn
 	subscription.SubscriptionArn = subArn
 
-	if app.SyncTopics.Topics[topicName] != nil {
-		app.SyncTopics.Lock()
+	if t, ok := app.AllTopics.Get(topicName); ok {
 		isDuplicate := false
 		// Duplicate check
-		for _, subscription := range app.SyncTopics.Topics[topicName].Subscriptions {
+		for _, subscription := range app.AllTopics.Subscriptions(t) {
 			if subscription.EndPoint == endpoint && subscription.TopicArn == topicArn {
 				isDuplicate = true
 				subArn = subscription.SubscriptionArn
 			}
 		}
 		if !isDuplicate {
-			app.SyncTopics.Topics[topicName].Subscriptions = append(app.SyncTopics.Topics[topicName].Subscriptions, subscription)
+			app.AllTopics.Subscribe(t, subscription)
 			log.WithFields(log.Fields{
 				"topic":    topicName,
 				"endpoint": endpoint,
 				"topicArn": topicArn,
 			}).Debug("Created subscription")
 		}
-		app.SyncTopics.Unlock()
 
 		//Create the response
 		uuid, _ := common.NewUUID()
@@ -313,10 +308,10 @@ func ListSubscriptions(w http.ResponseWriter, req *http.Request) {
 	respStruct := app.ListSubscriptionsResponse{}
 	respStruct.Xmlns = "http://queue.amazonaws.com/doc/2012-11-05/"
 	respStruct.Metadata.RequestId = uuid
-	respStruct.Result.Subscriptions.Member = make([]app.TopicMemberResult, 0, 0)
+	respStruct.Result.Subscriptions.Member = make([]app.TopicMemberResult, 0)
 
-	for _, topic := range app.SyncTopics.Topics {
-		for _, sub := range topic.Subscriptions {
+	for _, topic := range app.AllTopics.List() {
+		for _, sub := range app.AllTopics.Subscriptions(topic) {
 			tar := app.TopicMemberResult{TopicArn: topic.Arn, Protocol: sub.Protocol,
 				SubscriptionArn: sub.SubscriptionArn, Endpoint: sub.EndPoint, Owner: app.CurrentEnvironment.AccountID}
 			respStruct.Result.Subscriptions.Member = append(respStruct.Result.Subscriptions.Member, tar)
@@ -333,14 +328,14 @@ func ListSubscriptionsByTopic(w http.ResponseWriter, req *http.Request) {
 	uriSegments := strings.Split(topicArn, ":")
 	topicName := uriSegments[len(uriSegments)-1]
 
-	if topic, ok := app.SyncTopics.Topics[topicName]; ok {
+	if topic, ok := app.AllTopics.Get(topicName); ok {
 		uuid, _ := common.NewUUID()
 		respStruct := app.ListSubscriptionsByTopicResponse{}
 		respStruct.Xmlns = "http://queue.amazonaws.com/doc/2012-11-05/"
 		respStruct.Metadata.RequestId = uuid
-		respStruct.Result.Subscriptions.Member = make([]app.TopicMemberResult, 0, 0)
+		respStruct.Result.Subscriptions.Member = make([]app.TopicMemberResult, 0)
 
-		for _, sub := range topic.Subscriptions {
+		for _, sub := range app.AllTopics.Subscriptions(topic) {
 			tar := app.TopicMemberResult{TopicArn: topic.Arn, Protocol: sub.Protocol,
 				SubscriptionArn: sub.SubscriptionArn, Endpoint: sub.EndPoint, Owner: app.CurrentEnvironment.AccountID}
 			respStruct.Result.Subscriptions.Member = append(respStruct.Result.Subscriptions.Member, tar)
@@ -357,45 +352,38 @@ func SetSubscriptionAttributes(w http.ResponseWriter, req *http.Request) {
 	Attribute := req.FormValue("AttributeName")
 	Value := req.FormValue("AttributeValue")
 
-	for _, topic := range app.SyncTopics.Topics {
-		for _, sub := range topic.Subscriptions {
-			if sub.SubscriptionArn == subsArn {
-				if Attribute == "RawMessageDelivery" {
-					app.SyncTopics.Lock()
-					if Value == "true" {
-						sub.Raw = true
-					} else {
-						sub.Raw = false
-					}
-					app.SyncTopics.Unlock()
-					//Good Response == return
-					uuid, _ := common.NewUUID()
-					respStruct := app.SetSubscriptionAttributesResponse{"http://queue.amazonaws.com/doc/2012-11-05/", app.ResponseMetadata{RequestId: uuid}}
-					SendResponseBack(w, req, respStruct, content)
-					return
+	for _, topic := range app.AllTopics.List() {
+		app.AllTopics.UpdateSubscription(topic, subsArn, func(sub *app.Subscription) {
+			if Attribute == "RawMessageDelivery" {
+				if Value == "true" {
+					sub.Raw = true
+				} else {
+					sub.Raw = false
 				}
-
-				if Attribute == "FilterPolicy" {
-					filterPolicy := app.FilterPolicy{}
-					err := json.Unmarshal([]byte(Value), &filterPolicy)
-					if err != nil {
-						createErrorResponse(w, req, "ValidationError")
-						return
-					}
-
-					app.SyncTopics.Lock()
-					sub.FilterPolicy = filterPolicy
-					app.SyncTopics.Unlock()
-
-					//Good Response == return
-					uuid, _ := common.NewUUID()
-					respStruct := app.SetSubscriptionAttributesResponse{"http://queue.amazonaws.com/doc/2012-11-05/", app.ResponseMetadata{RequestId: uuid}}
-					SendResponseBack(w, req, respStruct, content)
-					return
-				}
-
+				//Good Response == return
+				uuid, _ := common.NewUUID()
+				respStruct := app.SetSubscriptionAttributesResponse{"http://queue.amazonaws.com/doc/2012-11-05/", app.ResponseMetadata{RequestId: uuid}}
+				SendResponseBack(w, req, respStruct, content)
+				return
 			}
-		}
+
+			if Attribute == "FilterPolicy" {
+				filterPolicy := app.FilterPolicy{}
+				err := json.Unmarshal([]byte(Value), &filterPolicy)
+				if err != nil {
+					createErrorResponse(w, req, "ValidationError")
+					return
+				}
+
+				sub.FilterPolicy = filterPolicy
+
+				//Good Response == return
+				uuid, _ := common.NewUUID()
+				respStruct := app.SetSubscriptionAttributesResponse{"http://queue.amazonaws.com/doc/2012-11-05/", app.ResponseMetadata{RequestId: uuid}}
+				SendResponseBack(w, req, respStruct, content)
+				return
+			}
+		})
 	}
 	createErrorResponse(w, req, "SubscriptionNotFound")
 }
@@ -405,45 +393,39 @@ func GetSubscriptionAttributes(w http.ResponseWriter, req *http.Request) {
 	content := req.FormValue("ContentType")
 	subsArn := req.FormValue("SubscriptionArn")
 
-	for _, topic := range app.SyncTopics.Topics {
-		for _, sub := range topic.Subscriptions {
-			if sub.SubscriptionArn == subsArn {
+	if sub, ok := app.AllTopics.GetSubscription(subsArn); ok {
+		entries := make([]app.SubscriptionAttributeEntry, 0)
+		entry := app.SubscriptionAttributeEntry{Key: "Owner", Value: app.CurrentEnvironment.AccountID}
+		entries = append(entries, entry)
+		entry = app.SubscriptionAttributeEntry{Key: "RawMessageDelivery", Value: strconv.FormatBool(sub.Raw)}
+		entries = append(entries, entry)
+		entry = app.SubscriptionAttributeEntry{Key: "TopicArn", Value: sub.TopicArn}
+		entries = append(entries, entry)
+		entry = app.SubscriptionAttributeEntry{Key: "Endpoint", Value: sub.EndPoint}
+		entries = append(entries, entry)
+		entry = app.SubscriptionAttributeEntry{Key: "PendingConfirmation", Value: "false"}
+		entries = append(entries, entry)
+		entry = app.SubscriptionAttributeEntry{Key: "ConfirmationWasAuthenticated", Value: "true"}
+		entries = append(entries, entry)
+		entry = app.SubscriptionAttributeEntry{Key: "SubscriptionArn", Value: sub.SubscriptionArn}
+		entries = append(entries, entry)
+		entry = app.SubscriptionAttributeEntry{Key: "Protocol", Value: sub.Protocol}
+		entries = append(entries, entry)
+		entry = app.SubscriptionAttributeEntry{Key: "Endpoint", Value: sub.EndPoint}
+		entries = append(entries, entry)
 
-				entries := make([]app.SubscriptionAttributeEntry, 0, 0)
-				entry := app.SubscriptionAttributeEntry{Key: "Owner", Value: app.CurrentEnvironment.AccountID}
-				entries = append(entries, entry)
-				entry = app.SubscriptionAttributeEntry{Key: "RawMessageDelivery", Value: strconv.FormatBool(sub.Raw)}
-				entries = append(entries, entry)
-				entry = app.SubscriptionAttributeEntry{Key: "TopicArn", Value: sub.TopicArn}
-				entries = append(entries, entry)
-				entry = app.SubscriptionAttributeEntry{Key: "Endpoint", Value: sub.EndPoint}
-				entries = append(entries, entry)
-				entry = app.SubscriptionAttributeEntry{Key: "PendingConfirmation", Value: "false"}
-				entries = append(entries, entry)
-				entry = app.SubscriptionAttributeEntry{Key: "ConfirmationWasAuthenticated", Value: "true"}
-				entries = append(entries, entry)
-				entry = app.SubscriptionAttributeEntry{Key: "SubscriptionArn", Value: sub.SubscriptionArn}
-				entries = append(entries, entry)
-				entry = app.SubscriptionAttributeEntry{Key: "Protocol", Value: sub.Protocol}
-				entries = append(entries, entry)
-				entry = app.SubscriptionAttributeEntry{Key: "Endpoint", Value: sub.EndPoint}
-				entries = append(entries, entry)
-
-				if sub.FilterPolicy != nil {
-					filterPolicyBytes, _ := json.Marshal(sub.FilterPolicy)
-					entry = app.SubscriptionAttributeEntry{Key: "FilterPolicy", Value: string(filterPolicyBytes)}
-					entries = append(entries, entry)
-				}
-
-				result := app.GetSubscriptionAttributesResult{SubscriptionAttributes: app.SubscriptionAttributes{Entries: entries}}
-				uuid, _ := common.NewUUID()
-				respStruct := app.GetSubscriptionAttributesResponse{"http://sns.amazonaws.com/doc/2010-03-31", result, app.ResponseMetadata{RequestId: uuid}}
-
-				SendResponseBack(w, req, respStruct, content)
-
-				return
-			}
+		if sub.FilterPolicy != nil {
+			filterPolicyBytes, _ := json.Marshal(sub.FilterPolicy)
+			entry = app.SubscriptionAttributeEntry{Key: "FilterPolicy", Value: string(filterPolicyBytes)}
+			entries = append(entries, entry)
 		}
+
+		result := app.GetSubscriptionAttributesResult{SubscriptionAttributes: app.SubscriptionAttributes{Entries: entries}}
+		uuid, _ := common.NewUUID()
+		respStruct := app.GetSubscriptionAttributesResponse{"http://sns.amazonaws.com/doc/2010-03-31", result, app.ResponseMetadata{RequestId: uuid}}
+
+		SendResponseBack(w, req, respStruct, content)
+		return
 	}
 	createErrorResponse(w, req, "SubscriptionNotFound")
 }
@@ -453,16 +435,10 @@ func Unsubscribe(w http.ResponseWriter, req *http.Request) {
 	subArn := req.FormValue("SubscriptionArn")
 
 	log.Println("Unsubscribe:", subArn)
-	for _, topic := range app.SyncTopics.Topics {
-		for i, sub := range topic.Subscriptions {
+	for _, topic := range app.AllTopics.List() {
+		for _, sub := range app.AllTopics.Subscriptions(topic) {
 			if sub.SubscriptionArn == subArn {
-				app.SyncTopics.Lock()
-
-				copy(topic.Subscriptions[i:], topic.Subscriptions[i+1:])
-				topic.Subscriptions[len(topic.Subscriptions)-1] = nil
-				topic.Subscriptions = topic.Subscriptions[:len(topic.Subscriptions)-1]
-
-				app.SyncTopics.Unlock()
+				app.AllTopics.Unsubscribe(topic, sub)
 
 				uuid, _ := common.NewUUID()
 				respStruct := app.UnsubscribeResponse{"http://queue.amazonaws.com/doc/2012-11-05/", app.ResponseMetadata{RequestId: uuid}}
@@ -483,11 +459,9 @@ func DeleteTopic(w http.ResponseWriter, req *http.Request) {
 
 	log.Println("Delete Topic - TopicName:", topicName)
 
-	_, ok := app.SyncTopics.Topics[topicName]
-	if ok {
-		app.SyncTopics.Lock()
-		delete(app.SyncTopics.Topics, topicName)
-		app.SyncTopics.Unlock()
+	if t, ok := app.AllTopics.Get(topicName); ok {
+		app.AllTopics.Remove(t)
+
 		uuid, _ := common.NewUUID()
 		respStruct := app.DeleteTopicResponse{"http://queue.amazonaws.com/doc/2012-11-05/", app.ResponseMetadata{RequestId: uuid}}
 		SendResponseBack(w, req, respStruct, content)
@@ -509,14 +483,14 @@ func Publish(w http.ResponseWriter, req *http.Request) {
 	arnSegments := strings.Split(topicArn, ":")
 	topicName := arnSegments[len(arnSegments)-1]
 
-	_, ok := app.SyncTopics.Topics[topicName]
+	t, ok := app.AllTopics.Get(topicName)
 	if ok {
 		log.WithFields(log.Fields{
 			"topic":    topicName,
 			"topicArn": topicArn,
 			"subject":  subject,
 		}).Debug("Publish to Topic")
-		for _, subs := range app.SyncTopics.Topics[topicName].Subscriptions {
+		for _, subs := range app.AllTopics.Subscriptions(t) {
 			switch app.Protocol(subs.Protocol) {
 			case app.ProtocolSQS:
 				if err := publishSQS(req, subs, messageBody, messageAttributes, subject, topicName, messageStructure); err != nil {

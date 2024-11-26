@@ -1,6 +1,7 @@
 package gosns
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,6 +16,8 @@ import (
 )
 
 func TestListTopicshandler_POST_NoTopics(t *testing.T) {
+	clearTopics(t)
+
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
 	req, err := http.NewRequest("POST", "/", nil)
@@ -45,6 +48,8 @@ func TestListTopicshandler_POST_NoTopics(t *testing.T) {
 }
 
 func TestCreateTopicshandler_POST_CreateTopics(t *testing.T) {
+	clearTopics(t)
+
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
 	req, err := http.NewRequest("POST", "/", nil)
@@ -80,6 +85,8 @@ func TestCreateTopicshandler_POST_CreateTopics(t *testing.T) {
 }
 
 func TestPublishhandler_POST_SendMessage(t *testing.T) {
+	setTopics(t, "UnitTestTopic1")
+
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
 	req, err := http.NewRequest("POST", "/", nil)
@@ -115,6 +122,8 @@ func TestPublishhandler_POST_SendMessage(t *testing.T) {
 }
 
 func TestPublishHandler_POST_FilterPolicyRejectsTheMessage(t *testing.T) {
+	clearTopics(t)
+
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
 	req, err := http.NewRequest("POST", "/", nil)
@@ -139,7 +148,7 @@ func TestPublishHandler_POST_FilterPolicyRejectsTheMessage(t *testing.T) {
 	topicArn := "arn:aws:sns:" + app.CurrentEnvironment.Region + ":000000000000:" + topicName
 	subArn, _ := common.NewUUID()
 	subArn = topicArn + ":" + subArn
-	app.SyncTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
+	app.AllTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
 		{
 			EndPoint:        app.SyncQueues.Queues[queueName].Arn,
 			Protocol:        "sqs",
@@ -188,6 +197,8 @@ func TestPublishHandler_POST_FilterPolicyRejectsTheMessage(t *testing.T) {
 var testHost = "http://localhost:4002/"
 
 func TestPublishHandler_POST_FilterPolicyPassesTheMessage(t *testing.T) {
+	clearTopics(t)
+
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
 	req, err := http.NewRequest("POST", testHost, nil)
@@ -212,7 +223,7 @@ func TestPublishHandler_POST_FilterPolicyPassesTheMessage(t *testing.T) {
 	topicArn := "arn:aws:sns:" + app.CurrentEnvironment.Region + ":000000000000:" + topicName
 	subArn, _ := common.NewUUID()
 	subArn = topicArn + ":" + subArn
-	app.SyncTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
+	app.AllTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
 		{
 			EndPoint:        app.SyncQueues.Queues[queueName].Arn,
 			Protocol:        "sqs",
@@ -260,6 +271,8 @@ func TestPublishHandler_POST_FilterPolicyPassesTheMessage(t *testing.T) {
 }
 
 func TestPublishHandler_POST_FilterPolicyMultiplesPassesTheMessage(t *testing.T) {
+	clearTopics(t)
+
 	// We set up queue so later we can check if anything was posted there
 	queueName := "testingQueue"
 	queueUrl := "http://" + app.CurrentEnvironment.Host + ":" + app.CurrentEnvironment.Port + "/queue/" + queueName
@@ -277,7 +290,7 @@ func TestPublishHandler_POST_FilterPolicyMultiplesPassesTheMessage(t *testing.T)
 	topicArn := "arn:aws:sns:" + app.CurrentEnvironment.Region + ":000000000000:" + topicName
 	subArn, _ := common.NewUUID()
 	subArn = topicArn + ":" + subArn
-	app.SyncTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
+	app.AllTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
 		{
 			EndPoint:        app.SyncQueues.Queues[queueName].Arn,
 			Protocol:        "sqs",
@@ -346,6 +359,8 @@ func TestPublishHandler_POST_FilterPolicyMultiplesPassesTheMessage(t *testing.T)
 }
 
 func TestSubscribehandler_POST_Success(t *testing.T) {
+	setTopics(t, "UnitTestTopic1")
+
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
 	req, err := http.NewRequest("POST", "/", nil)
@@ -382,6 +397,8 @@ func TestSubscribehandler_POST_Success(t *testing.T) {
 }
 
 func TestSubscribehandler_HTTP_POST_Success(t *testing.T) {
+	setTopics(t, "UnitTestTopic1")
+
 	done := make(chan bool)
 
 	r := mux.NewRouter()
@@ -439,6 +456,8 @@ func TestSubscribehandler_HTTP_POST_Success(t *testing.T) {
 }
 
 func TestPublish_No_Queue_Error_handler_POST_Success(t *testing.T) {
+	setTopics(t, "UnitTestTopic1")
+
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
 	req, err := http.NewRequest("POST", "/", nil)
@@ -474,6 +493,7 @@ func TestPublish_No_Queue_Error_handler_POST_Success(t *testing.T) {
 }
 
 func TestListSubscriptionByTopicResponse_No_Owner(t *testing.T) {
+	setTopics(t, "UnitTestTopic1")
 
 	// set accountID to test value so it can be populated in response
 	app.CurrentEnvironment.AccountID = "100010001000"
@@ -512,6 +532,7 @@ func TestListSubscriptionByTopicResponse_No_Owner(t *testing.T) {
 }
 
 func TestListSubscriptionsResponse_No_Owner(t *testing.T) {
+	setTopics(t, "UnitTestTopic1")
 
 	// set accountID to test value so it can be populated in response
 	app.CurrentEnvironment.AccountID = "100010001000"
@@ -550,6 +571,8 @@ func TestListSubscriptionsResponse_No_Owner(t *testing.T) {
 }
 
 func TestDeleteTopichandler_POST_Success(t *testing.T) {
+	setTopics(t, "UnitTestTopic1")
+
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
 	req, err := http.NewRequest("POST", "/", nil)
@@ -591,6 +614,8 @@ func TestDeleteTopichandler_POST_Success(t *testing.T) {
 }
 
 func TestGetSubscriptionAttributesHandler_POST_Success(t *testing.T) {
+	clearTopics(t)
+
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
 	req, err := http.NewRequest("POST", "/", nil)
@@ -602,7 +627,7 @@ func TestGetSubscriptionAttributesHandler_POST_Success(t *testing.T) {
 	topicArn := "arn:aws:sns:" + app.CurrentEnvironment.Region + ":000000000000:" + topicName
 	subArn, _ := common.NewUUID()
 	subArn = topicArn + ":" + subArn
-	app.SyncTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
+	app.AllTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
 		{
 			SubscriptionArn: subArn,
 			FilterPolicy: app.FilterPolicy{
@@ -655,6 +680,8 @@ func TestGetSubscriptionAttributesHandler_POST_Success(t *testing.T) {
 }
 
 func TestSetSubscriptionAttributesHandler_FilterPolicy_POST_Success(t *testing.T) {
+	clearTopics(t)
+
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
 	req, err := http.NewRequest("POST", "/", nil)
@@ -666,7 +693,7 @@ func TestSetSubscriptionAttributesHandler_FilterPolicy_POST_Success(t *testing.T
 	topicArn := "arn:aws:sns:" + app.CurrentEnvironment.Region + ":000000000000:" + topicName
 	subArn, _ := common.NewUUID()
 	subArn = topicArn + ":" + subArn
-	app.SyncTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
+	app.AllTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
 		{
 			SubscriptionArn: subArn,
 		},
@@ -699,8 +726,30 @@ func TestSetSubscriptionAttributesHandler_FilterPolicy_POST_Success(t *testing.T
 			rr.Body.String(), expected)
 	}
 
-	actualFilterPolicy := app.SyncTopics.Topics[topicName].Subscriptions[0].FilterPolicy
+	actualFilterPolicy := app.AllTopics.Topics[topicName].Subscriptions[0].FilterPolicy
 	if actualFilterPolicy["foo"][0] != "bar" {
 		t.Errorf("filter policy has not need applied")
 	}
+}
+
+func setTopics(t *testing.T, names ...string) {
+	clearTopics(t)
+	for _, n := range names {
+		t := &app.Topic{
+			Name: n,
+			Arn:  fmt.Sprintf("arn:aws:sns:%s:%s:%s", app.CurrentEnvironment.Region, app.CurrentEnvironment.AccountID, n),
+		}
+		t.Subscriptions = append(t.Subscriptions, &app.Subscription{
+			TopicArn: t.Arn,
+			EndPoint: "http://localhost",
+			Protocol: "http",
+		})
+		app.AllTopics.Topics[n] = t
+	}
+}
+
+func clearTopics(t *testing.T) {
+	t.Cleanup(func() {
+		app.AllTopics.Topics = make(map[string]*app.Topic)
+	})
 }

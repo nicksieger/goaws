@@ -91,7 +91,6 @@ func LoadYamlConfig(filename string, env string) []string {
 	}
 
 	app.SyncQueues.Lock()
-	app.SyncTopics.Lock()
 	for _, queue := range envs[env].Queues {
 		queueUrl := "http://" + app.CurrentEnvironment.Host + ":" + app.CurrentEnvironment.Port +
 			"/" + app.CurrentEnvironment.AccountID + "/" + queue.Name
@@ -139,11 +138,13 @@ func LoadYamlConfig(filename string, env string) []string {
 
 	}
 
+	app.SyncQueues.Unlock()
+
 	for _, topic := range envs[env].Topics {
 		topicArn := "arn:aws:sns:" + app.CurrentEnvironment.Region + ":" + app.CurrentEnvironment.AccountID + ":" + topic.Name
 
 		newTopic := &app.Topic{Name: topic.Name, Arn: topicArn}
-		newTopic.Subscriptions = make([]*app.Subscription, 0)
+		app.AllTopics.Add(newTopic)
 
 		for _, subs := range topic.Subscriptions {
 			var newSub *app.Subscription
@@ -163,13 +164,9 @@ func LoadYamlConfig(filename string, env string) []string {
 				newSub.FilterPolicy = filterPolicy
 			}
 
-			newTopic.Subscriptions = append(newTopic.Subscriptions, newSub)
+			app.AllTopics.Subscribe(newTopic, newSub)
 		}
-		app.SyncTopics.Topics[topic.Name] = newTopic
 	}
-
-	app.SyncQueues.Unlock()
-	app.SyncTopics.Unlock()
 
 	return ports
 }

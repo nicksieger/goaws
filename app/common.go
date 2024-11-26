@@ -48,6 +48,7 @@ type Environment struct {
 	Queues                 []EnvQueue
 	QueueAttributeDefaults EnvQueueAttributes
 	RandomLatency          RandomLatency
+	SubscriptionsDir       string
 }
 
 var CurrentEnvironment Environment
