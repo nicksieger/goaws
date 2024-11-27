@@ -135,7 +135,7 @@ func TestPublishHandler_POST_FilterPolicyRejectsTheMessage(t *testing.T) {
 	queueName := "testingQueue"
 	queueUrl := "http://" + app.CurrentEnvironment.Host + ":" + app.CurrentEnvironment.Port + "/queue/" + queueName
 	queueArn := "arn:aws:sqs:" + app.CurrentEnvironment.Region + ":000000000000:" + queueName
-	app.SyncQueues.Queues[queueName] = &app.Queue{
+	app.AllQueues.Queues[queueName] = &app.Queue{
 		Name:        queueName,
 		TimeoutSecs: 30,
 		Arn:         queueArn,
@@ -150,7 +150,7 @@ func TestPublishHandler_POST_FilterPolicyRejectsTheMessage(t *testing.T) {
 	subArn = topicArn + ":" + subArn
 	app.AllTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
 		{
-			EndPoint:        app.SyncQueues.Queues[queueName].Arn,
+			EndPoint:        app.AllQueues.Queues[queueName].Arn,
 			Protocol:        "sqs",
 			SubscriptionArn: subArn,
 			FilterPolicy: app.FilterPolicy{
@@ -188,9 +188,9 @@ func TestPublishHandler_POST_FilterPolicyRejectsTheMessage(t *testing.T) {
 	}
 
 	// check of the queue is empty
-	if len(app.SyncQueues.Queues[queueName].Messages) != 0 {
+	if len(app.AllQueues.Queues[queueName].Messages) != 0 {
 		t.Errorf("queue contains unexpected messages: got %v want %v",
-			len(app.SyncQueues.Queues[queueName].Messages), 0)
+			len(app.AllQueues.Queues[queueName].Messages), 0)
 	}
 }
 
@@ -210,7 +210,7 @@ func TestPublishHandler_POST_FilterPolicyPassesTheMessage(t *testing.T) {
 	queueName := "testingQueue"
 	queueUrl := testHost + "queue/" + queueName
 	queueArn := "arn:aws:sqs:" + app.CurrentEnvironment.Region + ":000000000000:" + queueName
-	app.SyncQueues.Queues[queueName] = &app.Queue{
+	app.AllQueues.Queues[queueName] = &app.Queue{
 		Name:        queueName,
 		TimeoutSecs: 30,
 		Arn:         queueArn,
@@ -225,7 +225,7 @@ func TestPublishHandler_POST_FilterPolicyPassesTheMessage(t *testing.T) {
 	subArn = topicArn + ":" + subArn
 	app.AllTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
 		{
-			EndPoint:        app.SyncQueues.Queues[queueName].Arn,
+			EndPoint:        app.AllQueues.Queues[queueName].Arn,
 			Protocol:        "sqs",
 			SubscriptionArn: subArn,
 			FilterPolicy: app.FilterPolicy{
@@ -264,9 +264,9 @@ func TestPublishHandler_POST_FilterPolicyPassesTheMessage(t *testing.T) {
 	}
 
 	// check of the queue is empty
-	if len(app.SyncQueues.Queues[queueName].Messages) != 1 {
+	if len(app.AllQueues.Queues[queueName].Messages) != 1 {
 		t.Errorf("queue contains unexpected messages: got %v want %v",
-			len(app.SyncQueues.Queues[queueName].Messages), 1)
+			len(app.AllQueues.Queues[queueName].Messages), 1)
 	}
 }
 
@@ -277,7 +277,7 @@ func TestPublishHandler_POST_FilterPolicyMultiplesPassesTheMessage(t *testing.T)
 	queueName := "testingQueue"
 	queueUrl := "http://" + app.CurrentEnvironment.Host + ":" + app.CurrentEnvironment.Port + "/queue/" + queueName
 	queueArn := "arn:aws:sqs:" + app.CurrentEnvironment.Region + ":000000000000:" + queueName
-	app.SyncQueues.Queues[queueName] = &app.Queue{
+	app.AllQueues.Queues[queueName] = &app.Queue{
 		Name:        queueName,
 		TimeoutSecs: 30,
 		Arn:         queueArn,
@@ -292,7 +292,7 @@ func TestPublishHandler_POST_FilterPolicyMultiplesPassesTheMessage(t *testing.T)
 	subArn = topicArn + ":" + subArn
 	app.AllTopics.Topics[topicName] = &app.Topic{Name: topicName, Arn: topicArn, Subscriptions: []*app.Subscription{
 		{
-			EndPoint:        app.SyncQueues.Queues[queueName].Arn,
+			EndPoint:        app.AllQueues.Queues[queueName].Arn,
 			Protocol:        "sqs",
 			SubscriptionArn: subArn,
 			FilterPolicy: app.FilterPolicy{
@@ -311,7 +311,7 @@ func TestPublishHandler_POST_FilterPolicyMultiplesPassesTheMessage(t *testing.T)
 
 	for _, test := range tt {
 		t.Run(test.value, func(t *testing.T) {
-			app.SyncQueues.Queues[queueName].Messages = nil
+			app.AllQueues.Queues[queueName].Messages = nil
 
 			// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 			// pass 'nil' as the third parameter.
@@ -350,9 +350,9 @@ func TestPublishHandler_POST_FilterPolicyMultiplesPassesTheMessage(t *testing.T)
 			}
 
 			// check of the queue is empty
-			if len(app.SyncQueues.Queues[queueName].Messages) != test.expected {
+			if len(app.AllQueues.Queues[queueName].Messages) != test.expected {
 				t.Errorf("queue contains unexpected messages: got %v want %v",
-					len(app.SyncQueues.Queues[queueName].Messages), test.expected)
+					len(app.AllQueues.Queues[queueName].Messages), test.expected)
 			}
 		})
 	}

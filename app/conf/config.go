@@ -90,7 +90,7 @@ func LoadYamlConfig(filename string, env string) []string {
 		app.CurrentEnvironment.Port = "4100"
 	}
 
-	app.SyncQueues.Lock()
+	app.AllQueues.Lock()
 	for _, queue := range envs[env].Queues {
 		queueUrl := "http://" + app.CurrentEnvironment.Host + ":" + app.CurrentEnvironment.Port +
 			"/" + app.CurrentEnvironment.AccountID + "/" + queue.Name
@@ -112,7 +112,7 @@ func LoadYamlConfig(filename string, env string) []string {
 			queue.VisibilityTimeout = app.CurrentEnvironment.QueueAttributeDefaults.VisibilityTimeout
 		}
 
-		app.SyncQueues.Queues[queue.Name] = &app.Queue{
+		app.AllQueues.Queues[queue.Name] = &app.Queue{
 			Name:                queue.Name,
 			TimeoutSecs:         queue.VisibilityTimeout,
 			Arn:                 queueArn,
@@ -127,9 +127,9 @@ func LoadYamlConfig(filename string, env string) []string {
 
 	// loop one more time to create queue's RedrivePolicy and assign deadletter queues in case dead letter queue is defined first in the config
 	for _, queue := range envs[env].Queues {
-		q := app.SyncQueues.Queues[queue.Name]
+		q := app.AllQueues.Queues[queue.Name]
 		if queue.RedrivePolicy != "" {
-			err := setQueueRedrivePolicy(app.SyncQueues.Queues, q, queue.RedrivePolicy)
+			err := setQueueRedrivePolicy(app.AllQueues.Queues, q, queue.RedrivePolicy)
 			if err != nil {
 				log.Errorf("err: %s", err)
 				return ports
@@ -138,7 +138,7 @@ func LoadYamlConfig(filename string, env string) []string {
 
 	}
 
-	app.SyncQueues.Unlock()
+	app.AllQueues.Unlock()
 
 	for _, topic := range envs[env].Topics {
 		topicArn := "arn:aws:sns:" + app.CurrentEnvironment.Region + ":" + app.CurrentEnvironment.AccountID + ":" + topic.Name
@@ -180,7 +180,7 @@ func createHttpSubscription(configSubscription app.EnvSubsciption) *app.Subscrip
 }
 
 func createSqsSubscription(configSubscription app.EnvSubsciption, topicArn string) *app.Subscription {
-	if _, ok := app.SyncQueues.Queues[configSubscription.QueueName]; !ok {
+	if _, ok := app.AllQueues.Queues[configSubscription.QueueName]; !ok {
 		queueUrl := "http://" + app.CurrentEnvironment.Host + ":" + app.CurrentEnvironment.Port +
 			"/" + app.CurrentEnvironment.AccountID + "/" + configSubscription.QueueName
 		if app.CurrentEnvironment.Region != "" {
@@ -188,7 +188,7 @@ func createSqsSubscription(configSubscription app.EnvSubsciption, topicArn strin
 				app.CurrentEnvironment.Port + "/" + app.CurrentEnvironment.AccountID + "/" + configSubscription.QueueName
 		}
 		queueArn := "arn:aws:sqs:" + app.CurrentEnvironment.Region + ":" + app.CurrentEnvironment.AccountID + ":" + configSubscription.QueueName
-		app.SyncQueues.Queues[configSubscription.QueueName] = &app.Queue{
+		app.AllQueues.Queues[configSubscription.QueueName] = &app.Queue{
 			Name:                configSubscription.QueueName,
 			TimeoutSecs:         app.CurrentEnvironment.QueueAttributeDefaults.VisibilityTimeout,
 			Arn:                 queueArn,
@@ -200,7 +200,7 @@ func createSqsSubscription(configSubscription app.EnvSubsciption, topicArn strin
 			Duplicates:          make(map[string]time.Time),
 		}
 	}
-	qArn := app.SyncQueues.Queues[configSubscription.QueueName].Arn
+	qArn := app.AllQueues.Queues[configSubscription.QueueName].Arn
 	newSub := &app.Subscription{EndPoint: qArn, Protocol: "sqs", TopicArn: topicArn, Raw: configSubscription.Raw}
 	subArn, _ := common.NewUUID()
 	subArn = topicArn + ":" + subArn

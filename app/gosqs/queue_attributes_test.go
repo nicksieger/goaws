@@ -11,9 +11,9 @@ import (
 func TestApplyQueueAttributes(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		deadLetterQueue := &app.Queue{Name: "failed-messages"}
-		app.SyncQueues.Lock()
-		app.SyncQueues.Queues["failed-messages"] = deadLetterQueue
-		app.SyncQueues.Unlock()
+		app.AllQueues.Lock()
+		app.AllQueues.Queues["failed-messages"] = deadLetterQueue
+		app.AllQueues.Unlock()
 		q := &app.Queue{TimeoutSecs: 30}
 		u := url.Values{}
 		u.Add("Attribute.1.Name", "DelaySeconds")

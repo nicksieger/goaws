@@ -54,9 +54,9 @@ func TestListQueues_POST_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler := http.HandlerFunc(ListQueues)
 
-	app.SyncQueues.Queues["foo"] = &app.Queue{Name: "foo", URL: "http://:/queue/foo"}
-	app.SyncQueues.Queues["bar"] = &app.Queue{Name: "bar", URL: "http://:/queue/bar"}
-	app.SyncQueues.Queues["foobar"] = &app.Queue{Name: "foobar", URL: "http://:/queue/foobar"}
+	app.AllQueues.Queues["foo"] = &app.Queue{Name: "foo", URL: "http://:/queue/foo"}
+	app.AllQueues.Queues["bar"] = &app.Queue{Name: "bar", URL: "http://:/queue/bar"}
+	app.AllQueues.Queues["foobar"] = &app.Queue{Name: "foobar", URL: "http://:/queue/foobar"}
 
 	handler.ServeHTTP(rr, req)
 
@@ -139,7 +139,7 @@ func TestCreateQueuehandler_POST_CreateQueue(t *testing.T) {
 		MaximumMessageSize: 2048,
 		Duplicates:         make(map[string]time.Time),
 	}
-	actualQueue := app.SyncQueues.Queues[queueName]
+	actualQueue := app.AllQueues.Queues[queueName]
 	if !reflect.DeepEqual(expectedQueue, actualQueue) {
 		t.Fatalf("expected %+v, got %+v", expectedQueue, actualQueue)
 	}
@@ -187,7 +187,7 @@ func TestCreateFIFOQueuehandler_POST_CreateQueue(t *testing.T) {
 		IsFIFO:      true,
 		Duplicates:  make(map[string]time.Time),
 	}
-	actualQueue := app.SyncQueues.Queues[queueName]
+	actualQueue := app.AllQueues.Queues[queueName]
 	if !reflect.DeepEqual(expectedQueue, actualQueue) {
 		t.Fatalf("expected %+v, got %+v", expectedQueue, actualQueue)
 	}
@@ -199,7 +199,7 @@ func TestSendMessage_MaximumMessageSize_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app.SyncQueues.Queues["test_max_message_size"] =
+	app.AllQueues.Queues["test_max_message_size"] =
 		&app.Queue{Name: "test_max_message_size", MaximumMessageSize: 100}
 
 	form := url.Values{}
@@ -237,7 +237,7 @@ func TestSendMessage_MaximumMessageSize_MessageTooBig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app.SyncQueues.Queues["test_max_message_size"] =
+	app.AllQueues.Queues["test_max_message_size"] =
 		&app.Queue{Name: "test_max_message_size", MaximumMessageSize: 10}
 
 	form := url.Values{}
@@ -350,7 +350,7 @@ func TestSendMessageBatch_POST_NoEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app.SyncQueues.Queues["testing"] = &app.Queue{Name: "testing"}
+	app.AllQueues.Queues["testing"] = &app.Queue{Name: "testing"}
 
 	form := url.Values{}
 	form.Add("Action", "SendMessageBatch")
@@ -404,7 +404,7 @@ func TestSendMessageBatch_POST_IdNotDistinct(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app.SyncQueues.Queues["testing"] = &app.Queue{Name: "testing"}
+	app.AllQueues.Queues["testing"] = &app.Queue{Name: "testing"}
 
 	form := url.Values{}
 	form.Add("Action", "SendMessageBatch")
@@ -444,7 +444,7 @@ func TestSendMessageBatch_POST_TooManyEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app.SyncQueues.Queues["testing"] = &app.Queue{Name: "testing"}
+	app.AllQueues.Queues["testing"] = &app.Queue{Name: "testing"}
 
 	form := url.Values{}
 	form.Add("Action", "SendMessageBatch")
@@ -502,7 +502,7 @@ func TestSendMessageBatch_POST_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app.SyncQueues.Queues["testing"] = &app.Queue{Name: "testing"}
+	app.AllQueues.Queues["testing"] = &app.Queue{Name: "testing"}
 
 	form := url.Values{}
 	form.Add("Action", "SendMessageBatch")
@@ -545,7 +545,7 @@ func TestSendMessageBatchToFIFOQueue_POST_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app.SyncQueues.Queues["testing.fifo"] = &app.Queue{
+	app.AllQueues.Queues["testing.fifo"] = &app.Queue{
 		Name:   "testing.fifo",
 		IsFIFO: true,
 	}
@@ -593,8 +593,8 @@ func TestChangeMessageVisibility_POST_SUCCESS(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app.SyncQueues.Queues["testing"] = &app.Queue{Name: "testing"}
-	app.SyncQueues.Queues["testing"].Messages = []app.Message{{
+	app.AllQueues.Queues["testing"] = &app.Queue{Name: "testing"}
+	app.AllQueues.Queues["testing"].Messages = []app.Message{{
 		MessageBody:   []byte("test1"),
 		ReceiptHandle: "123",
 	}}
@@ -909,9 +909,9 @@ func TestDeadLetterQueue(t *testing.T) {
 		Name:     "failed-messages",
 		Messages: []app.Message{},
 	}
-	app.SyncQueues.Lock()
-	app.SyncQueues.Queues["failed-messages"] = deadLetterQueue
-	app.SyncQueues.Unlock()
+	app.AllQueues.Lock()
+	app.AllQueues.Queues["failed-messages"] = deadLetterQueue
+	app.AllQueues.Unlock()
 	form := url.Values{}
 	form.Add("Action", "CreateQueue")
 	form.Add("QueueName", "testing-deadletter")
@@ -1564,11 +1564,11 @@ func TestSendingAndReceivingFromFIFOQueueReturnsSameMessageOnError(t *testing.T)
 		t.Fatal("handler should not return a message")
 	}
 
-	if len(app.SyncQueues.Queues["requeue-reset.fifo"].FIFOMessages) != 1 {
+	if len(app.AllQueues.Queues["requeue-reset.fifo"].FIFOMessages) != 1 {
 		t.Fatal("there should be only 1 group locked")
 	}
 
-	if app.SyncQueues.Queues["requeue-reset.fifo"].FIFOMessages["GROUP-X"] != 0 {
+	if app.AllQueues.Queues["requeue-reset.fifo"].FIFOMessages["GROUP-X"] != 0 {
 		t.Fatal("there should be GROUP-X locked")
 	}
 
@@ -1593,7 +1593,7 @@ func TestSendingAndReceivingFromFIFOQueueReturnsSameMessageOnError(t *testing.T)
 		t.Errorf("handler returned wrong status code: got \n%v want %v",
 			status, http.StatusOK)
 	}
-	if len(app.SyncQueues.Queues["requeue-reset.fifo"].Messages) != 1 {
+	if len(app.AllQueues.Queues["requeue-reset.fifo"].Messages) != 1 {
 		t.Fatal("there should be only 1 message in queue")
 	}
 
@@ -1680,7 +1680,7 @@ func TestSendMessage_POST_DuplicatationNotAppliedToStandardQueue(t *testing.T) {
 		t.Errorf("handler returned wrong status code: got \n%v want %v",
 			status, http.StatusOK)
 	}
-	if len(app.SyncQueues.Queues["stantdard-testing"].Messages) == 0 {
+	if len(app.AllQueues.Queues["stantdard-testing"].Messages) == 0 {
 		t.Fatal("there should be 1 message in queue")
 	}
 
@@ -1700,7 +1700,7 @@ func TestSendMessage_POST_DuplicatationNotAppliedToStandardQueue(t *testing.T) {
 		t.Errorf("handler returned wrong status code: got \n%v want %v",
 			status, http.StatusOK)
 	}
-	if len(app.SyncQueues.Queues["stantdard-testing"].Messages) == 1 {
+	if len(app.AllQueues.Queues["stantdard-testing"].Messages) == 1 {
 		t.Fatal("there should be 2 messages in queue")
 	}
 }
@@ -1750,7 +1750,7 @@ func TestSendMessage_POST_DuplicatationDisabledOnFifoQueue(t *testing.T) {
 		t.Errorf("handler returned wrong status code: got \n%v want %v",
 			status, http.StatusOK)
 	}
-	if len(app.SyncQueues.Queues["no-dup-testing.fifo"].Messages) == 0 {
+	if len(app.AllQueues.Queues["no-dup-testing.fifo"].Messages) == 0 {
 		t.Fatal("there should be 1 message in queue")
 	}
 
@@ -1770,7 +1770,7 @@ func TestSendMessage_POST_DuplicatationDisabledOnFifoQueue(t *testing.T) {
 		t.Errorf("handler returned wrong status code: got \n%v want %v",
 			status, http.StatusOK)
 	}
-	if len(app.SyncQueues.Queues["no-dup-testing.fifo"].Messages) != 2 {
+	if len(app.AllQueues.Queues["no-dup-testing.fifo"].Messages) != 2 {
 		t.Fatal("there should be 2 message in queue")
 	}
 }
@@ -1804,7 +1804,7 @@ func TestSendMessage_POST_DuplicatationEnabledOnFifoQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app.SyncQueues.Queues["dup-testing.fifo"].EnableDuplicates = true
+	app.AllQueues.Queues["dup-testing.fifo"].EnableDuplicates = true
 
 	form = url.Values{}
 	form.Add("Action", "SendMessage")
@@ -1822,7 +1822,7 @@ func TestSendMessage_POST_DuplicatationEnabledOnFifoQueue(t *testing.T) {
 		t.Errorf("handler returned wrong status code: got \n%v want %v",
 			status, http.StatusOK)
 	}
-	if len(app.SyncQueues.Queues["dup-testing.fifo"].Messages) == 0 {
+	if len(app.AllQueues.Queues["dup-testing.fifo"].Messages) == 0 {
 		t.Fatal("there should be 1 message in queue")
 	}
 
@@ -1842,10 +1842,10 @@ func TestSendMessage_POST_DuplicatationEnabledOnFifoQueue(t *testing.T) {
 		t.Errorf("handler returned wrong status code: got \n%v want %v",
 			status, http.StatusOK)
 	}
-	if len(app.SyncQueues.Queues["dup-testing.fifo"].Messages) != 1 {
+	if len(app.AllQueues.Queues["dup-testing.fifo"].Messages) != 1 {
 		t.Fatal("there should be 1 message in queue")
 	}
-	if body := app.SyncQueues.Queues["dup-testing.fifo"].Messages[0].MessageBody; string(body) == "Test2" {
+	if body := app.AllQueues.Queues["dup-testing.fifo"].Messages[0].MessageBody; string(body) == "Test2" {
 		t.Fatal("duplicate message should not be added to queue")
 	}
 }

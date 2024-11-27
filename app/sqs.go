@@ -96,10 +96,12 @@ type Queue struct {
 	Duplicates          map[string]time.Time
 }
 
-var SyncQueues = struct {
+type Queues struct {
 	sync.RWMutex
 	Queues map[string]*Queue
-}{Queues: make(map[string]*Queue)}
+}
+
+var AllQueues = &Queues{Queues: make(map[string]*Queue)}
 
 var DeduplicationPeriod = 5 * time.Minute
 

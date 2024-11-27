@@ -575,10 +575,10 @@ func publishSQS(req *http.Request,
 	arnSegments := strings.Split(queueName, ":")
 	queueName = arnSegments[len(arnSegments)-1]
 
-	if _, ok := app.SyncQueues.Queues[queueName]; ok {
-		app.SyncQueues.Lock()
-		app.SyncQueues.Queues[queueName].Messages = append(app.SyncQueues.Queues[queueName].Messages, msg)
-		app.SyncQueues.Unlock()
+	if _, ok := app.AllQueues.Queues[queueName]; ok {
+		app.AllQueues.Lock()
+		app.AllQueues.Queues[queueName].Messages = append(app.AllQueues.Queues[queueName].Messages, msg)
+		app.AllQueues.Unlock()
 
 		log.Infof("%s: Topic: %s(%s), Message: %s\n", time.Now().Format("2006-01-02 15:04:05"), topicName, queueName, msg.MessageBody)
 	} else {

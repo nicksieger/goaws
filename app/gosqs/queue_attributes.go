@@ -71,7 +71,7 @@ func validateAndSetQueueAttributes(q *app.Queue, u url.Values) error {
 		}
 		dlt := strings.Split(deadLetterQueueArn, ":")
 		deadLetterQueueName := dlt[len(dlt)-1]
-		deadLetterQueue, ok := app.SyncQueues.Queues[deadLetterQueueName]
+		deadLetterQueue, ok := app.AllQueues.Queues[deadLetterQueueName]
 		if !ok {
 			return ErrInvalidParameterValue
 		}
