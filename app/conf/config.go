@@ -94,8 +94,12 @@ func LoadYamlConfig(filename string, env string) []string {
 		storage := &app.TopicStorage{Directory: app.CurrentEnvironment.TopicStorage}
 		app.AllTopics.TopicChanges = storage
 		app.AllTopics.Lock()
-		app.AllTopics.Topics = storage.Load()
+		topics := storage.Load()
+		app.AllTopics.Topics = topics
 		app.AllTopics.Unlock()
+		for _, t := range topics {
+			log.Infof("Loading topic '%s' from storage (%d subs)", t.Name, len(t.Subscriptions))
+		}
 	}
 
 	app.AllQueues.Lock()
@@ -120,6 +124,7 @@ func LoadYamlConfig(filename string, env string) []string {
 			queue.VisibilityTimeout = app.CurrentEnvironment.QueueAttributeDefaults.VisibilityTimeout
 		}
 
+		log.Infof("Adding queue '%s' from config", queue.Name)
 		app.AllQueues.Queues[queue.Name] = &app.Queue{
 			Name:                queue.Name,
 			TimeoutSecs:         queue.VisibilityTimeout,
@@ -151,6 +156,7 @@ func LoadYamlConfig(filename string, env string) []string {
 	for _, topic := range envs[env].Topics {
 		newTopic := &app.Topic{Name: topic.Name}
 		topicArn := newTopic.EnsureArn()
+		log.Infof("Adding topic '%s' from config", topic.Name)
 		app.AllTopics.Add(newTopic)
 
 		for _, subs := range topic.Subscriptions {
