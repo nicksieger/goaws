@@ -1,7 +1,11 @@
 package conf
 
 import (
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,6 +16,7 @@ import (
 func TestConfig_NoQueuesOrTopics(t *testing.T) {
 	env := "NoQueuesOrTopics"
 	port := LoadYamlConfig("./mock-data/mock-config.yaml", env)
+	cleanupEnvironment(t)
 	if port[0] != "4100" {
 		t.Errorf("Expected port number 4200 but got %s\n", port)
 	}
@@ -38,6 +43,7 @@ func TestConfig_NoQueuesOrTopics(t *testing.T) {
 func TestConfig_CreateQueuesTopicsAndSubscriptions(t *testing.T) {
 	env := "Local"
 	port := LoadYamlConfig("./mock-data/mock-config.yaml", env)
+	cleanupEnvironment(t)
 	if port[0] != "4100" {
 		t.Errorf("Expected port number 4100 but got %s\n", port)
 	}
@@ -64,6 +70,7 @@ func TestConfig_CreateQueuesTopicsAndSubscriptions(t *testing.T) {
 func TestConfig_QueueAttributes(t *testing.T) {
 	env := "Local"
 	port := LoadYamlConfig("./mock-data/mock-config.yaml", env)
+	cleanupEnvironment(t)
 	if port[0] != "4100" {
 		t.Errorf("Expected port number 4100 but got %s\n", port)
 	}
@@ -113,6 +120,7 @@ func TestConfig_QueueAttributes(t *testing.T) {
 func TestConfig_NoQueueAttributeDefaults(t *testing.T) {
 	env := "NoQueueAttributeDefaults"
 	LoadYamlConfig("./mock-data/mock-config.yaml", env)
+	cleanupEnvironment(t)
 
 	receiveWaitTime := app.AllQueues.Queues["local-queue1"].ReceiveWaitTimeSecs
 	if receiveWaitTime != 0 {
@@ -146,6 +154,14 @@ func TestConfig_LoadYamlConfig_finds_default_config(t *testing.T) {
 
 	env := "Local"
 	LoadYamlConfig("", env)
+	cleanupEnvironment(t)
+
+	assert.IsType(t, &app.TopicStorage{}, app.AllTopics.TopicChanges)
+	storage := app.AllTopics.TopicChanges.(*app.TopicStorage)
+	t.Cleanup(func() {
+		app.AllTopics.TopicChanges = &app.NoTopicStorage{}
+		storage.OnClear()
+	})
 
 	queues := app.AllQueues.Queues
 	topics := app.AllTopics.List()
@@ -156,4 +172,32 @@ func TestConfig_LoadYamlConfig_finds_default_config(t *testing.T) {
 	for _, expectedName := range expectedTopics {
 		assert.True(t, slices.ContainsFunc(topics, func(t *app.Topic) bool { return t.Name == expectedName }))
 	}
+
+	stat, err := os.Stat(storage.TopicsDir())
+	assert.NoError(t, err)
+	assert.True(t, stat.IsDir())
+
+	topicFiles := 0
+	assert.NoError(t, filepath.WalkDir(storage.TopicsDir(), func(path string, d fs.DirEntry, err error) error {
+		if strings.HasSuffix(path, ".yaml") {
+			topicFiles += 1
+		}
+		return err
+	}))
+	assert.Equal(t, 4, topicFiles)
+}
+
+func cleanupEnvironment(t *testing.T) {
+	t.Cleanup(func() {
+		app.CurrentEnvironment = app.Environment{}
+
+		app.AllQueues.Lock()
+		app.AllQueues.Queues = make(map[string]*app.Queue)
+		app.AllQueues.Unlock()
+
+		app.AllTopics.Lock()
+		app.AllTopics.Topics = make(map[string]*app.Topic)
+		app.AllTopics.TopicChanges = &app.NoTopicStorage{}
+		app.AllTopics.Unlock()
+	})
 }

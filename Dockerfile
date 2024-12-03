@@ -1,5 +1,5 @@
 # build image
-FROM golang:alpine as build
+FROM golang:alpine AS build
 
 WORKDIR /go/src/github.com/Admiral-Piett/goaws
 

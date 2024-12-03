@@ -44,6 +44,7 @@ type Environment struct {
 	LogToFile              bool
 	LogFile                string
 	EnableDuplicates       bool
+	TopicStorage           string
 	Topics                 []EnvTopic
 	Queues                 []EnvQueue
 	QueueAttributeDefaults EnvQueueAttributes

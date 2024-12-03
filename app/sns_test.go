@@ -1,7 +1,11 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFilterPolicy_IsSatisfiedBy(t *testing.T) {
@@ -55,4 +59,31 @@ func TestFilterPolicy_IsSatisfiedBy(t *testing.T) {
 		}
 	}
 
+}
+
+func TestTopicStorage(t *testing.T) {
+	ts := &TopicStorage{Directory: t.TempDir()}
+	dir := ts.TopicsDir()
+
+	assert.Equal(t, 0, len(ts.Load()))
+
+	assert.NoError(t, os.MkdirAll(dir, 0o0700))
+
+	assert.Equal(t, 0, len(ts.Load()))
+
+	assert.NoError(t, os.WriteFile(filepath.Join(dir, "file.txt"), []byte("hello"), 0o0600))
+
+	assert.Equal(t, 0, len(ts.Load()))
+
+	topic := &Topic{Name: "hello-topic"}
+	assert.NoError(t, ts.writeTopic(topic))
+
+	topics := ts.Load()
+	assert.Equal(t, 1, len(topics))
+
+	assert.NotNil(t, topics[topic.Name])
+
+	ts.OnRemove(topic)
+
+	assert.Equal(t, 0, len(ts.Load()))
 }

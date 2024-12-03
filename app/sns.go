@@ -2,8 +2,14 @@ package app
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
+
+	"github.com/ghodss/yaml"
 )
 
 type SnsErrorType struct {
@@ -85,6 +91,13 @@ type Topic struct {
 	Subscriptions []*Subscription
 }
 
+func (t *Topic) EnsureArn() string {
+	if t.Arn == "" {
+		t.Arn = "arn:aws:sns:" + CurrentEnvironment.Region + ":" + CurrentEnvironment.AccountID + ":" + t.Name
+	}
+	return t.Arn
+}
+
 type (
 	Protocol         string
 	MessageStructure string
@@ -106,8 +119,15 @@ const (
 	ErrNoDefaultElementInJSON = "Invalid parameter: Message Structure - No default entry in JSON message body"
 )
 
+type TopicChanges interface {
+	OnUpdate(t *Topic)
+	OnRemove(t *Topic)
+	OnClear()
+}
+
 type Topics struct {
 	sync.RWMutex
+	TopicChanges
 	Topics map[string]*Topic
 }
 
@@ -115,11 +135,13 @@ func (ts *Topics) Add(t *Topic) {
 	ts.Lock()
 	defer ts.Unlock()
 	ts.Topics[t.Name] = t
+	ts.TopicChanges.OnUpdate(t)
 }
 
 func (ts *Topics) Remove(t *Topic) bool {
 	ts.Lock()
 	defer ts.Unlock()
+	ts.TopicChanges.OnRemove(t)
 	if _, res := ts.Topics[t.Name]; res {
 		delete(ts.Topics, t.Name)
 		return true
@@ -155,6 +177,7 @@ func (ts *Topics) Count() int {
 func (ts *Topics) Clear() {
 	ts.Lock()
 	defer ts.Unlock()
+	ts.TopicChanges.OnClear()
 	ts.Topics = make(map[string]*Topic)
 }
 
@@ -174,6 +197,7 @@ func (ts *Topics) Subscribe(t *Topic, s *Subscription) {
 		panic(fmt.Errorf("unregistered topic %s", t.Name))
 	}
 	t.Subscriptions = append(t.Subscriptions, s)
+	ts.TopicChanges.OnUpdate(t)
 }
 
 func (ts *Topics) Unsubscribe(t *Topic, s *Subscription) {
@@ -185,6 +209,7 @@ func (ts *Topics) Unsubscribe(t *Topic, s *Subscription) {
 	t.Subscriptions = slices.DeleteFunc(t.Subscriptions, func(sub *Subscription) bool {
 		return sub.SubscriptionArn == s.SubscriptionArn
 	})
+	ts.TopicChanges.OnUpdate(t)
 }
 
 func (ts *Topics) GetSubscription(arn string) (*Subscription, bool) {
@@ -209,6 +234,95 @@ func (ts *Topics) UpdateSubscription(t *Topic, arn string, update func(s *Subscr
 			break
 		}
 	}
+	ts.TopicChanges.OnUpdate(t)
 }
 
-var AllTopics = &Topics{Topics: make(map[string]*Topic)}
+var AllTopics = &Topics{
+	TopicChanges: &NoTopicStorage{},
+	Topics:       make(map[string]*Topic),
+}
+
+type TopicStorage struct {
+	Directory string
+}
+
+func (ts *TopicStorage) TopicsDir() string {
+	return filepath.Join(ts.Directory, "goaws_topics")
+}
+
+func (ts *TopicStorage) writeTopic(t *Topic) error {
+	b, err := yaml.Marshal(t)
+	if err != nil {
+		return err
+	}
+	d := ts.TopicsDir()
+	err = os.MkdirAll(d, 0o0700)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(fmt.Sprintf("%s.yaml", filepath.Join(d, t.Name)), b, 0o0644)
+}
+
+func (ts *TopicStorage) Load() map[string]*Topic {
+	topics := make(map[string]*Topic)
+	_ = filepath.WalkDir(ts.TopicsDir(), func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		ext := filepath.Ext(path)
+		if ext != ".yaml" {
+			return nil
+		}
+		var contents []byte
+		contents, err = os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		t := &Topic{}
+		err = yaml.Unmarshal(contents, t)
+		if err != nil {
+			return err
+		}
+		if t.Name == "" {
+			t.Name = strings.TrimSuffix(filepath.Base(path), ext)
+		}
+		_ = t.EnsureArn()
+		topics[t.Name] = t
+		return nil
+	})
+	return topics
+}
+
+// OnClear implements TopicChanges.
+func (ts *TopicStorage) OnClear() {
+	_ = os.RemoveAll(ts.TopicsDir())
+}
+
+// OnRemove implements TopicChanges.
+func (ts *TopicStorage) OnRemove(t *Topic) {
+	f := fmt.Sprintf("%s.yaml", filepath.Join(ts.TopicsDir(), t.Name))
+	_ = os.Remove(f)
+}
+
+// OnUpdate implements TopicChanges.
+func (ts *TopicStorage) OnUpdate(t *Topic) {
+	_ = ts.writeTopic(t)
+}
+
+var _ TopicChanges = (*TopicStorage)(nil)
+
+type NoTopicStorage struct{}
+
+// OnClear implements TopicChanges.
+func (n *NoTopicStorage) OnClear() {
+}
+
+// OnRemove implements TopicChanges.
+func (n *NoTopicStorage) OnRemove(t *Topic) {
+}
+
+// OnUpdate implements TopicChanges.
+func (n *NoTopicStorage) OnUpdate(t *Topic) {
+}
+
+var _ TopicChanges = (*NoTopicStorage)(nil)

@@ -90,6 +90,14 @@ func LoadYamlConfig(filename string, env string) []string {
 		app.CurrentEnvironment.Port = "4100"
 	}
 
+	if app.CurrentEnvironment.TopicStorage != "" {
+		storage := &app.TopicStorage{Directory: app.CurrentEnvironment.TopicStorage}
+		app.AllTopics.TopicChanges = storage
+		app.AllTopics.Lock()
+		app.AllTopics.Topics = storage.Load()
+		app.AllTopics.Unlock()
+	}
+
 	app.AllQueues.Lock()
 	for _, queue := range envs[env].Queues {
 		queueUrl := "http://" + app.CurrentEnvironment.Host + ":" + app.CurrentEnvironment.Port +
@@ -141,9 +149,8 @@ func LoadYamlConfig(filename string, env string) []string {
 	app.AllQueues.Unlock()
 
 	for _, topic := range envs[env].Topics {
-		topicArn := "arn:aws:sns:" + app.CurrentEnvironment.Region + ":" + app.CurrentEnvironment.AccountID + ":" + topic.Name
-
-		newTopic := &app.Topic{Name: topic.Name, Arn: topicArn}
+		newTopic := &app.Topic{Name: topic.Name}
+		topicArn := newTopic.EnsureArn()
 		app.AllTopics.Add(newTopic)
 
 		for _, subs := range topic.Subscriptions {

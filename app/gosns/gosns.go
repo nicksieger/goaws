@@ -120,10 +120,9 @@ func CreateTopic(w http.ResponseWriter, req *http.Request) {
 	if t, ok := app.AllTopics.Get(topicName); ok {
 		topicArn = t.Arn
 	} else {
-		topicArn = "arn:aws:sns:" + app.CurrentEnvironment.Region + ":" + app.CurrentEnvironment.AccountID + ":" + topicName
-
 		log.Println("Creating Topic:", topicName)
-		topic := &app.Topic{Name: topicName, Arn: topicArn}
+		topic := &app.Topic{Name: topicName}
+		topicArn = topic.EnsureArn()
 		topic.Subscriptions = make([]*app.Subscription, 0)
 		app.AllTopics.Add(topic)
 	}
