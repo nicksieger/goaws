@@ -193,7 +193,10 @@ func Subscribe(w http.ResponseWriter, req *http.Request) {
 
 		//Create the response
 		uuid, _ := common.NewUUID()
-		if app.Protocol(subscription.Protocol) == app.ProtocolHTTP || app.Protocol(subscription.Protocol) == app.ProtocolHTTPS {
+		respStruct := app.SubscribeResponse{"http://queue.amazonaws.com/doc/2012-11-05/", app.SubscribeResult{SubscriptionArn: subArn}, app.ResponseMetadata{RequestId: uuid}}
+		if !app.CurrentEnvironment.SkipConfirmSubs &&
+			(app.Protocol(subscription.Protocol) == app.ProtocolHTTP ||
+				app.Protocol(subscription.Protocol) == app.ProtocolHTTPS) {
 			id, _ := common.NewUUID()
 			token, _ := common.NewUUID()
 
@@ -202,7 +205,6 @@ func Subscribe(w http.ResponseWriter, req *http.Request) {
 				token:  token,
 			}
 
-			respStruct := app.SubscribeResponse{"http://queue.amazonaws.com/doc/2012-11-05/", app.SubscribeResult{SubscriptionArn: subArn}, app.ResponseMetadata{RequestId: uuid}}
 			SendResponseBack(w, req, respStruct, content)
 			time.Sleep(time.Second)
 
@@ -228,8 +230,6 @@ func Subscribe(w http.ResponseWriter, req *http.Request) {
 				log.Error("Error posting to url ", err)
 			}
 		} else {
-			respStruct := app.SubscribeResponse{"http://queue.amazonaws.com/doc/2012-11-05/", app.SubscribeResult{SubscriptionArn: subArn}, app.ResponseMetadata{RequestId: uuid}}
-
 			SendResponseBack(w, req, respStruct, content)
 		}
 

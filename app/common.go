@@ -49,6 +49,7 @@ type Environment struct {
 	Queues                 []EnvQueue
 	QueueAttributeDefaults EnvQueueAttributes
 	RandomLatency          RandomLatency
+	SkipConfirmSubs        bool
 	SubscriptionsDir       string
 }
 
