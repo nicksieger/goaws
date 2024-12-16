@@ -296,21 +296,25 @@ func TestPublishHandler_POST_FilterPolicyMultiplesPassesTheMessage(t *testing.T)
 			Protocol:        "sqs",
 			SubscriptionArn: subArn,
 			FilterPolicy: app.FilterPolicy{
-				"foo": {"bar", "baz", "quux"}, // set up FilterPolicy for attribute `foo` to be equal to one of `bar`, `baz`, or `quux`
+				"foo":   {"bar", "baz", "quux"}, // set up FilterPolicy for attribute `foo` to be equal to one of `bar`, `baz`, or `quux`
+				"fruit": {"apple", "orange", "mango"},
 			},
 		},
 	}}
 
 	tt := []struct {
-		value    string
-		expected int
+		fooValue, fruitValue, fruitType string
+		expected                        int
 	}{
-		{"baz", 1},
-		{"fred", 0},
+		{"baz", "apple", "String", 1},
+		{"fred", "apple", "String", 0},
+		{"baz", "tomato", "String", 0},
+		{"baz", "[\"apple\"]", "String.Array", 1},
+		{"baz", "apple", "String.Array", 0},
 	}
 
 	for _, test := range tt {
-		t.Run(test.value, func(t *testing.T) {
+		t.Run(test.fooValue+"-"+test.fruitValue, func(t *testing.T) {
 			app.AllQueues.Queues[queueName].Messages = nil
 
 			// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
@@ -323,9 +327,12 @@ func TestPublishHandler_POST_FilterPolicyMultiplesPassesTheMessage(t *testing.T)
 			form := url.Values{}
 			form.Add("TopicArn", topicArn)
 			form.Add("Message", "TestMessage1")
-			form.Add("MessageAttributes.entry.1.Name", "foo")                   // special format of parameter for MessageAttribute
-			form.Add("MessageAttributes.entry.1.Value.DataType", "String")      // Datatype must be specified for proper parsing by aws
-			form.Add("MessageAttributes.entry.1.Value.StringValue", test.value) // we actually sent attribute `foo`
+			form.Add("MessageAttributes.entry.1.Name", "foo")                      // special format of parameter for MessageAttribute
+			form.Add("MessageAttributes.entry.1.Value.DataType", "String")         // Datatype must be specified for proper parsing by aws
+			form.Add("MessageAttributes.entry.1.Value.StringValue", test.fooValue) // we actually sent attribute `foo`
+			form.Add("MessageAttributes.entry.2.Name", "fruit")
+			form.Add("MessageAttributes.entry.2.Value.DataType", test.fruitType)
+			form.Add("MessageAttributes.entry.2.Value.StringValue", test.fruitValue)
 			req.PostForm = form
 
 			// We create a ResponseRecorder (which satisfies http.ResponseWriter) to record the response.

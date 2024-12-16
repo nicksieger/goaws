@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -61,14 +62,25 @@ func (fp FilterPolicy) IsSatisfiedBy(msgAttrs map[string]MessageAttributeValue) 
 			return false // the attribute has to be present in the message
 		}
 
+		var values []string
+
 		// String, String.Array, Number data-types are allowed by SNS filter policies
-		// however go-AWS currently only supports String filter policies. That feature can be added here
+		// however go-AWS currently only supports String/String.Array attribute types.
 		// ref: https://docs.aws.amazon.com/sns/latest/dg/message-filtering.html
-		if attrValue.DataType != "String" {
+		switch attrValue.DataType {
+		case "String":
+			values = []string{attrValue.Value}
+
+		case "String.Array":
+			if err := json.Unmarshal([]byte(attrValue.Value), &values); err != nil {
+				return false
+			}
+
+		default:
 			return false
 		}
 
-		if !stringInSlice(attrValue.Value, policyAttrValues) {
+		if !valuesInPolicy(values, policyAttrValues) {
 			return false // the attribute value has to be among filtered ones
 		}
 	}
@@ -76,13 +88,13 @@ func (fp FilterPolicy) IsSatisfiedBy(msgAttrs map[string]MessageAttributeValue) 
 	return true
 }
 
-func stringInSlice(a string, list []string) bool {
-	for _, b := range list {
-		if b == a {
-			return true
+func valuesInPolicy(values []string, list []string) bool {
+	for _, b := range values {
+		if !slices.Contains(list, b) {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 type Topic struct {
